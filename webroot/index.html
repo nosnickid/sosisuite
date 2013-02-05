@@ -14,6 +14,10 @@
       body {
         padding-top: 60px; /* 60px to make the container go all the way to the bottom of the topbar */
       }
+
+      .col-quantity {
+        width: 2em;
+      }
     </style>
 
 </head>
@@ -51,9 +55,9 @@
    <div class="row">
       <div class="span6">
          <table class="table table-striped table-condensed table-bordered">
+            <col />
+            <col class="col-quantity" />
             <thead>
-               <col />
-               <col style="align-right" />
                <tr>
                   <th>Item</th>
                   <th>Quantity</th>
@@ -74,8 +78,6 @@
          </table>
       </div>
       <div class="span6">
-         <textarea></textarea>
-
          {{view App.AddItemForm}}
       </div>
    </div>
@@ -83,9 +85,27 @@
 </script>
 
 <script type="text/x-handlebars" data-template-name="addItemForm">
-   {{view Ember.TextField valueBinding="itemName"}}
-   {{view Ember.TextField valueBinding="itemCount" class="input-mini" type="number"}}
-   <button class="btn" {{action "addItem" view}}>Add</button>
+   <form>
+   <fieldset>
+      <legend>Add Items</legend>
+      <label>EFT fitting</label>
+       {{view Ember.TextArea valueBinding="eftFitting" class="span6" rows="10" placeholder="Paste fitting..."}}
+
+       <div class="input-append">
+          <button class="btn" {{action "addFitting" view}}>Add Fitting</button>
+          {{view Ember.TextField valueBinding="fittingCount" class="input-mini" type="number"}}
+          <span class="add-on">times</span>
+       </div>
+
+      <label>Single Item</label>
+
+      <div class="input-append">
+         {{view Ember.TextField valueBinding="itemName" placeholder="Item name..."}}
+         {{view Ember.TextField valueBinding="itemCount" class="input-mini" type="number" }}
+         <button class="btn" {{action "addItem" view}}>Add</button>
+       </div>
+   </fieldset>
+   </form>
 </script>
 
 
@@ -106,13 +126,67 @@
    App.JitaRunController = Ember.ArrayController.extend({
       content: [],
 
-      itemName: "An item",
+      itemName: "",
       itemCount: 1,
+
+      eftFitting: "",
+
+      fittingCount: 1,
 
       addItem: function(evt) {
          var count = this.get("itemCount");
          if (count > 0) {
             this.doAddItem(this.get("itemName"), count);
+         }
+      },
+
+      addFitting: function(evt) {
+         var fitting = this.get("eftFitting");
+         var count = parseInt(this.get("fittingCount"));
+         if (count != 0) {
+            this.parseAndAddFitting(fitting, count);
+         }
+      },
+
+      parseAndAddFitting: function(fitting, count) {
+         var matchers;
+
+         matchers = [
+            // "[empty med slot]"
+            [ /\[empty (low|med|high) slot\]/, function(controller, matches) {
+               // nothing to do! Just ignore an empty slot.
+            } ],
+            // "[Thorax, Prometheus Exenthal's Thorax]"
+            [ /^\[([^,]+), .+$/, function(controller, matches) {
+               controller.doAddItem(matches[1], count);
+            } ],
+            // "Heavy Electron Blaster II, Caldari Navy Antimatter Charge M"
+            [ /([^,]+), ([^,]+)/, function(controller, matches) {
+               controller.doAddItem(matches[1], count);
+               // Hax. Always add 100 of the module "ammo", regardless of what it is or what size
+               // the module is.
+               // TODO: load module stats and do something more sensible.
+               controller.doAddItem(matches[2], count * 100);
+            } ],
+            // "Warrior II x6" or "10mn Afterburner II"
+            [ /^(.+?)( x[0-9]+)?$/, function(controller, matches) {
+               var factor = 1;
+               if (matches[2]) {
+                  factor = parseInt(matches[2].substring(2));
+               }
+
+               controller.doAddItem(matches[1], factor * count);
+            } ]
+         ]
+         fitting = fitting.split("\n");
+         for(var i = 0; i < fitting.length; i++) {
+            for(var j = 0; j < matchers.length; j++) {
+               matches = fitting[i].match(matchers[j][0]);
+               if (matches) {
+                  matchers[j][1](this, matches);
+                  break;
+               }
+            }
          }
       },
 
